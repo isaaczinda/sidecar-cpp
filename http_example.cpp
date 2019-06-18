@@ -1,11 +1,19 @@
 /* PROBLEMS:
 
- - right now, http-proxy and lightstep build separately which means that they
-   have to build protobuf twice. Protobuf notices when it has been built and
-   linked twice and complains. We need to find a way to build protobuf once
-   for these two projects.
- -
+ - right now, we are relying on a sketchy relative include path in our Makefile
+   to find the lightstep proto headers.
+ - create some data structure to manage the different tracers, because we don't
+   want to have to create a new one every time. we also want some sort of
+   garbage collector to clean up ones that haven't been used for too long
+    * maybe LRU replacement ?
+ - fix /usr/local/include/google/protobuf/parse_context.h warnings.
 
+ - standard way of setting tracer baggage
+    * how to change tracer `component_name`
+    * might be a useful read: https://github.com/opentracing/specification/blob/master/semantic_conventions.md
+
+ - how to convert span proto span object --> span and preserve the time it was
+   originally recorded
 */
 
 #include <evhttp.h>
@@ -14,17 +22,54 @@
 #include <sstream>
 #include <iostream>
 
+#include <opentracing/tracer.h>
+#include <lightstep/tracer.h>
+#include <map>
+#include "span_converter.h"
 
-//
-// #include <opentracing/tracer.h>
-// #include <lightstep/tracer.h>
-
-#define SATELLITE_IP "0.0.0.0"
-#define SATELLITE_PORT 1000
+#define SATELLITE_ADDRESS "localhost"
+#define SATELLITE_PORT 8360
 
 #define BINARY_CONTENT_TYPE "application/octet-stream"
 
+// make the custom-defined protobuf key value dict a bit more paletable
 typedef google::protobuf::RepeatedPtrField< lightstep::collector::KeyValue > KeyValueDict;
+typedef std::shared_ptr < lightstep::LightStepTracer > LightStepTracerPtr;
+
+
+// keep track of all the tracers we spin up !
+std::map< int, std::shared_ptr< lightstep::LightStepTracer > > Tracers;
+
+
+std::shared_ptr < lightstep::LightStepTracer > initTracer(std::string component_name, int tracer_id) {
+  // check if we need to make a new tracer for this tracer_id
+  auto found_tracer = Tracers.find(tracer_id);
+
+  // if we were able to find this tracer_id in the nam
+  if (found_tracer != Tracers.end()) {
+    std::cout << "we found tracer " << tracer_id << " in the map." << std::endl;
+    return found_tracer->second;
+  } else
+  {
+    std::cout << "we are creating new tracer with id " << tracer_id <<  std::endl;
+  }
+
+  lightstep::LightStepTracerOptions options;
+
+  options.component_name = component_name;
+  options.access_token = "default token";
+
+  // use the streaming tracer settings
+  options.collector_plaintext = true;
+  options.satellite_endpoints = {{SATELLITE_ADDRESS, SATELLITE_PORT}};
+  options.use_stream_recorder = true;
+  options.verbose = true;
+
+  auto tracer = lightstep::MakeLightStepTracer(std::move(options));
+
+  Tracers.insert(std::pair< int, std::shared_ptr< lightstep::LightStepTracer > >(tracer_id, tracer));
+  return tracer;
+}
 
 void evbuffer_to_stringstream(evbuffer * ev_buffer, std::stringstream * stream)
 {
@@ -51,7 +96,7 @@ void print_keyvaluetags(KeyValueDict dict)
   std::cout << std::endl;
 }
 
-void process_request(struct evhttp_request *req, void *arg){
+void process_request(struct evhttp_request *req, void *arg) {
     std::stringstream request_stream;
 
     struct evbuffer *request_buf = evhttp_request_get_input_buffer(req);
@@ -97,17 +142,42 @@ void process_request(struct evhttp_request *req, void *arg){
       return;
     }
 
-    if (report_request.spans().size() > 0) {
-      std::string access_token = report_request.auth().access_token();
-      lightstep::collector::Reporter reporter = report_request.reporter();
+    auto spans = report_request.spans();
 
-      // TODO: somehow operation_name is becoming confused with access_token
-      std::cout << "number of spans: " << report_request.spans().size() << std::endl;
-      print_keyvaluetags(reporter.tags());
+    if (spans.size() > 0) {
+      // std::string access_token = report_request.auth().access_token();
+      // lightstep::collector::Reporter reporter = report_request.reporter();
+      //       std::string component_name = reporter.;
+      // int reporter_id = reporter.reporter_id();
 
+      auto timestamp = FromTimestamp(spans[0].start_timestamp());
 
+      // timepoint --> time_t
+      // std::time_t timestamp_t = std::chrono::system_clock::to_time_t(timestamp);
+      //
+      // std::cout << "timestamp is " << std::ctime(&timestamp_t) << std::endl;
+
+      // auto tracer = initTracer(component_name, reporter_id);
+      //
+      // for (auto iter = spans.begin(); iter != spans.end(); iter++) {
+      //   std::string operation_name = iter->operation_name();
+      //
+      //   // quickly start and finish each span (I guess)
+      //   auto span = tracer->StartSpan(operation_name);
+      //   span->Finish();
+      // }
+      //
+      // tracer->Flush();
+
+      // // TODO: somehow operation_name is becoming confused with access_token
+      // std::cout << "number of spans: " << report_request.spans().size() << std::endl;
+      //
+      // std::cout << reporter.reporter_id() << std::endl;
+      // print_keyvaluetags(reporter.tags());
     }
 
+    // to see if LightStep is working...
+    // initGlobalTracer();
 
     evbuffer_add_printf(response_buf, "Requested: %s\n", evhttp_request_uri(req));
     evhttp_send_reply(req, HTTP_OK, "OK", response_buf);
