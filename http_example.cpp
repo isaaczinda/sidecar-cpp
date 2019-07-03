@@ -20,60 +20,24 @@
    originally recorded
 */
 
+// external includes
 #include <evhttp.h>
+#include <opentracing/tracer.h>
+
+// system includes
 #include <iostream>
-#include "collector.pb.h" // TODO: WOW this is jank...
 #include <sstream>
 #include <iostream>
-
-#include <opentracing/tracer.h>
-#include <lightstep/tracer.h>
 #include <map>
-#include "span_converter.h"
+
+// protobuf includes
+#include <collector.pb.h>
+
 
 #define SATELLITE_ADDRESS "localhost"
 #define SATELLITE_PORT 8360
 
 #define BINARY_CONTENT_TYPE "application/octet-stream"
-
-// make the custom-defined protobuf key value dict a bit more paletable
-typedef google::protobuf::RepeatedPtrField< lightstep::collector::KeyValue > KeyValueDict;
-typedef std::shared_ptr < lightstep::LightStepTracer > LightStepTracerPtr;
-
-
-// keep track of all the tracers we spin up !
-std::map< int, std::shared_ptr< lightstep::LightStepTracer > > Tracers;
-
-
-std::shared_ptr < lightstep::LightStepTracer > initTracer(std::string component_name, int tracer_id) {
-  // check if we need to make a new tracer for this tracer_id
-  auto found_tracer = Tracers.find(tracer_id);
-
-  // if we were able to find this tracer_id in the nam
-  if (found_tracer != Tracers.end()) {
-    std::cout << "we found tracer " << tracer_id << " in the map." << std::endl;
-    return found_tracer->second;
-  } else
-  {
-    std::cout << "we are creating new tracer with id " << tracer_id <<  std::endl;
-  }
-
-  lightstep::LightStepTracerOptions options;
-
-  options.component_name = component_name;
-  options.access_token = "default token";
-
-  // use the streaming tracer settings
-  options.collector_plaintext = true;
-  options.satellite_endpoints = {{SATELLITE_ADDRESS, SATELLITE_PORT}};
-  options.use_stream_recorder = true;
-  options.verbose = true;
-
-  auto tracer = lightstep::MakeLightStepTracer(std::move(options));
-
-  Tracers.insert(std::pair< int, std::shared_ptr< lightstep::LightStepTracer > >(tracer_id, tracer));
-  return tracer;
-}
 
 void evbuffer_to_stringstream(evbuffer * ev_buffer, std::stringstream * stream)
 {
@@ -89,16 +53,16 @@ void evbuffer_to_stringstream(evbuffer * ev_buffer, std::stringstream * stream)
   stream->write(char_buffer, sizeof(char) * ev_buffer_len);
 }
 
-void print_keyvaluetags(KeyValueDict dict)
-{
-  for (int i = 0; i < dict.size(); i++)
-  {
-    if (i != 0) { std::cout << ", "; }
-    std::cout << "{" << dict[i].key() << ": " << dict[i].string_value() << "}";
-  }
-
-  std::cout << std::endl;
-}
+// void print_keyvaluetags(KeyValueDict dict)
+// {
+//   for (int i = 0; i < dict.size(); i++)
+//   {
+//     if (i != 0) { std::cout << ", "; }
+//     std::cout << "{" << dict[i].key() << ": " << dict[i].string_value() << "}";
+//   }
+//
+//   std::cout << std::endl;
+// }
 
 void process_request(struct evhttp_request *req, void *arg) {
     std::stringstream request_stream;
@@ -156,7 +120,9 @@ void process_request(struct evhttp_request *req, void *arg) {
 
       // auto timestamp = FromTimestamp(spans[0].start_timestamp());
 
-      auto span_context = FromSpanContext(spans[0].span_context());
+      std::cout << "found " << spans.size() << " spans." <<std::endl;
+
+      // auto span_context = FromSpanContext(spans[0].span_context());
 
       // timepoint --> time_t
       // std::time_t timestamp_t = std::chrono::system_clock::to_time_t(timestamp);

@@ -1,0 +1,72 @@
+workspace(name="cpp_sidecar")
+
+# TODO: why are all of these nice rules deprecated ?
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+git_repository(
+    name = "io_opentracing_cpp",
+    remote = "https://github.com/opentracing/opentracing-cpp.git",
+    commit = "cf9b9d5c26ef985af2213521a4f0701b7e715db2", # use opentracing v1.5.1
+)
+
+## libevent ##
+
+http_archive(
+    name = "com_github_libevent_libevent",
+    urls = [
+        "https://github.com/libevent/libevent/archive/release-2.1.8-stable.zip"
+    ],
+    sha256 = "70158101eab7ed44fd9cc34e7f247b3cae91a8e4490745d9d6eb7edc184e4d96",
+    strip_prefix = "libevent-release-2.1.8-stable",
+    build_file = "//bazel:libevent.BUILD",
+)
+
+# so that we can nicely build libevent using bazel rules
+git_repository(
+    name = "rules_foreign_cc",
+    remote = "https://github.com/bazelbuild/rules_foreign_cc",
+    commit = "0b8356f1999d370024fc7afd924c87cb9ce77965", # bf99a0bf0080bcd50431aa7124ef23e5afd58325
+)
+
+load("@rules_foreign_cc//:workspace_definitions.bzl", "rules_foreign_cc_dependencies")
+
+rules_foreign_cc_dependencies([
+])
+
+## for collector.proto ##
+
+new_git_repository(
+    name = "com_lightstep_tracer_common",
+    remote = "https://github.com/lightstep/lightstep-tracer-common",
+    commit = "bc2310a0474352fa2616bdc0a27457b146b136b4", # use tracer v0.9.0
+    build_file = "//bazel:lightstep_tracer_common.BUILD"
+)
+
+## protobuf ##
+
+# for cpp_proto_library rule
+# https://github.com/stackb/rules_proto
+http_archive(
+    name = "build_stack_rules_proto",
+    urls = ["https://github.com/stackb/rules_proto/archive/b93b544f851fdcd3fc5c3d47aee3b7ca158a8841.tar.gz"],
+    sha256 = "c62f0b442e82a6152fcd5b1c0b7c4028233a9e314078952b6b04253421d56d61",
+    strip_prefix = "rules_proto-b93b544f851fdcd3fc5c3d47aee3b7ca158a8841",
+)
+load("@build_stack_rules_proto//cpp:deps.bzl", "cpp_proto_library")
+cpp_proto_library()
+
+
+# collector.proto depends on some files in this repo
+git_repository(
+    name = "com_github_googleapis_googleapis",
+    remote = "https://github.com/googleapis/googleapis",
+    commit = "41d72d444fbe445f4da89e13be02078734fb7875",
+)
+
+# a dependency of @com_github_googleapis_googleapis
+http_archive(
+    name = "io_bazel_rules_go",
+    urls = ["https://github.com/bazelbuild/rules_go/releases/download/0.17.0/rules_go-0.17.0.tar.gz"],
+    sha256 = "492c3ac68ed9dcf527a07e6a1b2dcbf199c6bf8b35517951467ac32e421c06c1",
+)
