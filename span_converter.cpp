@@ -1,5 +1,4 @@
 #include "span_converter.h"
-#include <ratio>
 
 /*
 google::protobuf::Timestamp ToTimestamp(
@@ -33,6 +32,27 @@ time_point<[...], duration<long long, ratio<[...],
       1000000>>>
 */
 
+
+class SpanContext : public opentracing::SpanContext {
+ public:
+  virtual bool sampled() const noexcept = 0;
+
+  virtual uint64_t trace_id() const noexcept = 0;
+
+  virtual uint64_t span_id() const noexcept = 0;
+
+  virtual opentracing::expected<void> Inject(
+      const PropagationOptions& propagation_options,
+      std::ostream& writer) const = 0;
+
+  virtual opentracing::expected<void> Inject(
+      const PropagationOptions& propagation_options,
+      const opentracing::TextMapWriter& writer) const = 0;
+
+  virtual opentracing::expected<void> Inject(
+      const PropagationOptions& propagation_options,
+      const opentracing::HTTPHeadersWriter& writer) const = 0;
+};
 
 void PrintTimePoint(TimePointOpenTracing & tp) {
   long duration = tp.time_since_epoch().count();
@@ -129,8 +149,20 @@ opentracing::SpanReferenceType FromRelationship(lightstep::collector::Reference_
   throw "lightstep::collector::Relationship had an illegal value.";
 }
 
-opentracing::expected<std::unique_ptr<opentracing::SpanContext>>
-  FromSpanContext(lightstep::collector::SpanContext spancontext)
+opentracing::expected<std::unique_ptr<opentracing::SpanContext>> FromSpanContext(lightstep::collector::SpanContext span_context)
 {
+  std::unordered_map<std::string, std::string> ls_baggage;
+  auto baggage = span_context.baggage();
+
+  for (auto iter = baggage.begin(); iter != baggage.end(); iter++) {
+    std::cout << "{" << iter->first << ", " << iter->second << "}, ";
+    ls_baggage.insert(*iter); // copy the pair into the new map
+  }
+  std::cout << std::endl;
+
+  auto ls_span_context = std::unique_ptr<opentracing::SpanContext>{
+    new lightstep::LightStepImmutableSpanContext{ span_context.trace_id(), span_context.span_id(), true, ls_baggage }};
+
+  return opentracing::expected<std::unique_ptr<opentracing::SpanContext>>(ls_span_context);
 
 }

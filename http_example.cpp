@@ -11,6 +11,10 @@
  - standard way of setting tracer baggage
     * how to change tracer `component_name`
     * might be a useful read: https://github.com/opentracing/specification/blob/master/semantic_conventions.md
+ - LightStepImmutableSpanContext is very tricky to use (because it's not
+  exposed...) and we need to use it
+    * **I need to make my own shitty class that implements SpanContext as simply
+      as possible**
 
  - how to convert span proto span object --> span and preserve the time it was
    originally recorded
@@ -150,7 +154,9 @@ void process_request(struct evhttp_request *req, void *arg) {
       //       std::string component_name = reporter.;
       // int reporter_id = reporter.reporter_id();
 
-      auto timestamp = FromTimestamp(spans[0].start_timestamp());
+      // auto timestamp = FromTimestamp(spans[0].start_timestamp());
+
+      auto span_context = FromSpanContext(spans[0].span_context());
 
       // timepoint --> time_t
       // std::time_t timestamp_t = std::chrono::system_clock::to_time_t(timestamp);

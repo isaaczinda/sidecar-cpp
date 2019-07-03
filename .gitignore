@@ -1,0 +1,6 @@
+*.o
+generated
+proto
+proto_example
+example
+http_example
