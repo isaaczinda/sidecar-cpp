@@ -10,6 +10,16 @@ git_repository(
     commit = "cf9b9d5c26ef985af2213521a4f0701b7e715db2", # use opentracing v1.5.1
 )
 
+## boost 1.70.0 ##
+
+http_archive(
+    name = "boost",
+    urls = ["https://dl.bintray.com/boostorg/release/1.70.0/source/boost_1_70_0.tar.gz"],
+    sha256="882b48708d211a5f48e60b0124cf5863c1534cd544ecd0664bb534a4b5d506e9",
+    build_file="//bazel:boost.BUILD",
+    strip_prefix="boost_1_70_0",
+)
+
 ## libevent ##
 
 http_archive(

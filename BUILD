@@ -13,3 +13,13 @@ cc_binary(
       "@io_opentracing_cpp//:opentracing",
     ]
 )
+
+cc_binary(
+    name = "boost_example",
+    srcs = [
+      "boost_example.cpp",
+    ],
+    deps = [
+      "@boost//:boost_headers"
+    ]
+)

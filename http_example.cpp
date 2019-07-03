@@ -1,23 +1,6 @@
 /* PROBLEMS:
 
- - right now, we are relying on a sketchy relative include path in our Makefile
-   to find the lightstep proto headers.
- - create some data structure to manage the different tracers, because we don't
-   want to have to create a new one every time. we also want some sort of
-   garbage collector to clean up ones that haven't been used for too long
-    * maybe LRU replacement ?
- - fix /usr/local/include/google/protobuf/parse_context.h warnings.
-
- - standard way of setting tracer baggage
-    * how to change tracer `component_name`
-    * might be a useful read: https://github.com/opentracing/specification/blob/master/semantic_conventions.md
- - LightStepImmutableSpanContext is very tricky to use (because it's not
-  exposed...) and we need to use it
-    * **I need to make my own shitty class that implements SpanContext as simply
-      as possible**
-
- - how to convert span proto span object --> span and preserve the time it was
-   originally recorded
+boost: 1.70.0
 */
 
 // external includes
