@@ -20,30 +20,6 @@ http_archive(
     strip_prefix="boost_1_70_0",
 )
 
-## libevent ##
-
-http_archive(
-    name = "com_github_libevent_libevent",
-    urls = [
-        "https://github.com/libevent/libevent/archive/release-2.1.8-stable.zip"
-    ],
-    sha256 = "70158101eab7ed44fd9cc34e7f247b3cae91a8e4490745d9d6eb7edc184e4d96",
-    strip_prefix = "libevent-release-2.1.8-stable",
-    build_file = "//bazel:libevent.BUILD",
-)
-
-# so that we can nicely build libevent using bazel rules
-git_repository(
-    name = "rules_foreign_cc",
-    remote = "https://github.com/bazelbuild/rules_foreign_cc",
-    commit = "0b8356f1999d370024fc7afd924c87cb9ce77965", # bf99a0bf0080bcd50431aa7124ef23e5afd58325
-)
-
-load("@rules_foreign_cc//:workspace_definitions.bzl", "rules_foreign_cc_dependencies")
-
-rules_foreign_cc_dependencies([
-])
-
 ## for collector.proto ##
 
 new_git_repository(
