@@ -1,7 +1,8 @@
 /*
 taken from: http://think-async.com/Asio/boost_asio_1_13_0/doc/html/boost_asio/tutorial/tutdaytime3/src.html
-
 */
+
+// #include <collector.pb.h>
 
 #include <ctime>
 #include <iostream>
@@ -12,10 +13,9 @@ taken from: http://think-async.com/Asio/boost_asio_1_13_0/doc/html/boost_asio/tu
 #include <boost/enable_shared_from_this.hpp>
 #include <boost/asio.hpp>
 
-// class tcp_connection;
-// class tcp_server;
 
 #define PORT 1998
+#define READ_BUFFER_LENGTH 128
 
 using boost::asio::ip::tcp;
 
@@ -58,11 +58,26 @@ public:
 
     auto write_handler = boost::bind(
       &tcp_connection::handle_write,
-      shared_from_this(), // TODO: what does this do
+      // passes 'this' in a way that the shared pointer class notices
+      shared_from_this(),
       boost::asio::placeholders::error,
       boost::asio::placeholders::bytes_transferred);
 
+    // setup the read buffer, underlying memory allocated on the heap
+    // std::shared_ptr<std::vector<char>> char_buf = new std::vector<char>(READ_BUFFER_LENGTH + 1); // TODO: remove 1
+    std::shared_ptr<char> char_buf(new char[READ_BUFFER_LENGTH + 1], std::default_delete<char[]>());
+    auto read_buffer = boost::asio::buffer(char_buf.get(), READ_BUFFER_LENGTH + 1);
+    
+    // read handler will write data into the read buffer
+    auto read_handler = boost::bind(
+      &tcp_connection::handle_read,
+      shared_from_this(),
+      boost::asio::placeholders::bytes_transferred,
+      char_buf
+    );
+
     boost::asio::async_write(socket_, boost::asio::buffer(message_), write_handler);
+    boost::asio::async_read(socket_, read_buffer, read_handler);
   }
 
 private:
@@ -75,7 +90,23 @@ private:
   {
     std::cout << "tcp_connection::handle_write()" << std::endl;
   }
+
+  void handle_read(size_t bytes_transferred, std::shared_ptr<char> buffer)
+  {
+    std::cout << "tcp_connection::handle_read() transferred "
+      << bytes_transferred << " bytes" << std::endl;
+
+    // since vectors are guarenteed to store elements contiguously
+    // (https://stackoverflow.com/questions/2923272/how-to-convert-vector-to-array)
+
+    char *buffer_raw = buffer.get();
+
+    buffer_raw[bytes_transferred] = '\0'; // so we can print like a string
+    std::cout << (int)buffer_raw[0] << std::endl;
+    std::cout << "string is: '" << buffer_raw <<  "'" << std::endl;
+  }
 };
+
 
 class tcp_server
 {
