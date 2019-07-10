@@ -1,3 +1,8 @@
+/*
+taken from: http://think-async.com/Asio/boost_asio_1_13_0/doc/html/boost_asio/tutorial/tutdaytime3/src.html
+
+*/
+
 #include <ctime>
 #include <iostream>
 #include <string>
@@ -10,8 +15,14 @@
 // class tcp_connection;
 // class tcp_server;
 
-using  boost::asio::ip::tcp;
+#define PORT 1998
 
+using boost::asio::ip::tcp;
+
+/*
+we inherit from boost::enable_shared_from_this and support a shared_ptr
+so that we can continue reusing a connection so long as
+*/
 class tcp_connection
   : public boost::enable_shared_from_this<tcp_connection>
 {
@@ -39,7 +50,11 @@ public:
   {
     std::cout << "tcp_connection::start()" << std::endl;
 
-    message_ = "this is a test";
+    message_ =
+      "HTTP/1.1 200 OK\r\n"
+      "Content-Length: 12\r\n"
+      "Content-Type: text/plain\r\n\r\n"
+      "Hello world.";
 
     auto write_handler = boost::bind(
       &tcp_connection::handle_write,
@@ -71,8 +86,11 @@ private:
 public:
   tcp_server(boost::asio::io_context& io_context)
     : io_context_(io_context),
-    acceptor_(io_context, tcp::endpoint(tcp::v4(), 1234))
+      // connect on every adddress on this machine
+      acceptor_(io_context, tcp::endpoint(tcp::v4(), PORT))
   {
+    std::cout << "tcp_server::tcp_server()" << std::endl;
+
     start_accept();
   }
 
