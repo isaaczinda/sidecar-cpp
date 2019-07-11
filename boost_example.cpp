@@ -113,9 +113,6 @@ public:
         // Set a timeout on the operation
         stream_.expires_after(std::chrono::seconds(30));
 
-        std::cout << "*** POST request ***" << std::endl;
-        std::cout << req_ << std::endl;
-
         // Send the HTTP request to the remote host
         http::async_write(stream_, req_,
             beast::bind_front_handler(
@@ -150,9 +147,12 @@ public:
         if(ec)
             return fail(ec, "read");
 
-        // Write the message to standard out
-        std::cout << "*** received response ***" << std::endl;
-        std::cout << res_ << std::endl;
+        if (res_.result() != http::status::ok) {
+          std::cerr << "*** received abnormal response ***" << std::endl;
+          std::cerr << res_ << std::endl;
+        } else {
+          std::cout << "received normal response from satellite." << std::endl;
+        }
 
         // Gracefully close the socket
         stream_.socket().shutdown(tcp::socket::shutdown_both, ec);
