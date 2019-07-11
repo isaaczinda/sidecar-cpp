@@ -20,6 +20,7 @@ taken from: http://think-async.com/Asio/boost_asio_1_13_0/doc/html/boost_asio/tu
 #define SERVER_PORT 1998
 #define SATELLITE_IP "127.0.0.1"
 #define SATELLITE_PORT "8360"
+#define ACCESS_TOKEN "testtesttest"
 
 using boost::asio::ip::tcp;
 namespace beast = boost::beast;
@@ -65,13 +66,12 @@ public:
         req_.version(version);
         req_.method(http::verb::post);
         req_.target(target);
-
         req_.set(http::field::host, host);
-        req_.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
 
         // standard headers for sending to satellites
         req_.insert("Content-Type", "application/octet-stream");
         req_.insert("Accept", "text/plain"); // get a human-readable response from the server
+        req_.insert("Lightstep-Access-Token", ACCESS_TOKEN);
 
         req_.body() = body;
         req_.prepare_payload(); // sets body size in HTTP headers
@@ -244,28 +244,36 @@ private:
     }
 
     /*
-    pass string by value because this is a simple first implementatiokn
-    to actually make this performant we will want to stop some of this copying
-
-    all of the retry logic and stuff should be isolated to this class
-
-    11 == HTTP/1.1
+    parse the message to make sure that
+      1) it has some spans in it
+      2) it is valid protobuf !
+    before we forward to satellite
     */
-    std::make_shared<session>(io_context_)->run(SATELLITE_IP, SATELLITE_PORT, "/api/v2/reports", 11, request_.body());
 
     // convert the request body from string --> stringstream
-    // std::stringstream body_stream(body_string);
-    //
-    // GOOGLE_PROTOBUF_VERIFY_VERSION;
-    //
-    // lightstep::collector::ReportRequest report_request;
-    //
-    // if (!report_request.ParseFromIstream(&body_stream)) {
-    //   std::cerr << "there was an error parsing the report request" << std::endl;
-    //   return;
-    // }
-    //
-    // std::cout << "received spans: " << report_request.spans().size() << std::endl;
+    GOOGLE_PROTOBUF_VERIFY_VERSION;
+
+    std::stringstream body_stream(request_.body());
+    lightstep::collector::ReportRequest report_request;
+
+    if (!report_request.ParseFromIstream(&body_stream)) {
+      std::cerr << "there was an error parsing the report request" << std::endl;
+      return;
+    }
+
+
+    if (report_request.spans().size() != 0) {
+      /*
+      pass string by value because this is a simple first implementatiokn
+      to actually make this performant we will want to stop some of this copying
+
+      all of the retry logic and stuff should be isolated to this class
+
+      11 == HTTP/1.1
+      */
+      std::cout << "sending " << report_request.spans().size() << " spans" << std::endl;
+      std::make_shared<session>(io_context_)->run(SATELLITE_IP, SATELLITE_PORT, "/api/v2/reports", 11, request_.body());
+    }
 
     write_response("200 OK");
   }
