@@ -4,7 +4,7 @@ taken from: http://think-async.com/Asio/boost_asio_1_13_0/doc/html/boost_asio/tu
 todo: match both \r\n\r\n\ and \n\n
 */
 
-// #include <collector.pb.h>
+#include <collector.pb.h>
 
 #include <ctime>
 #include <iostream>
@@ -16,11 +16,17 @@ todo: match both \r\n\r\n\ and \n\n
 #include <boost/asio.hpp>
 #include <boost/regex.hpp>
 
+#include <boost/beast.hpp>
+// #include <boost/beast/core.hpp>
+
+#include <sstream>
+
 
 #define PORT 1998
-#define READ_BUFFER_LENGTH 128
 
 using boost::asio::ip::tcp;
+namespace beast = boost::beast;
+namespace http = beast::http;
 
 /*
 we inherit from boost::enable_shared_from_this and support a shared_ptr
@@ -30,9 +36,12 @@ class tcp_connection
   : public boost::enable_shared_from_this<tcp_connection>
 {
 private:
-  std::string message_;
   tcp::socket socket_;
   boost::asio::streambuf request_data_;
+  std::string message_;
+
+  beast::flat_buffer overflow_buf_; // resizable buffer of chars
+  http::request<http::vector_body<char>> request_;
 
 public:
   // make a nice name for a pointer to this class
@@ -54,19 +63,6 @@ public:
   {
     std::cout << "tcp_connection::start()" << std::endl;
 
-    message_ =
-      "HTTP/1.1 200 OK\r\n"
-      "Content-Length: 12\r\n"
-      "Content-Type: text/plain\r\n\r\n"
-      "Hello world.";
-
-    auto write_handler = boost::bind(
-      &tcp_connection::handle_write,
-      // passes 'this' in a way that the shared pointer class notices
-      shared_from_this(),
-      boost::asio::placeholders::error,
-      boost::asio::placeholders::bytes_transferred);
-
     // setup the read buffer, underlying memory allocated on the heap
     // std::shared_ptr<std::vector<char>> char_buf = new std::vector<char>(READ_BUFFER_LENGTH + 1); // TODO: remove 1
     // std::shared_ptr<char> char_buf(new char[READ_BUFFER_LENGTH + 1], std::default_delete<char[]>());
@@ -74,13 +70,16 @@ public:
 
     // read handler will write data into the read buffer
     auto read_handler = boost::bind(
-      &tcp_connection::handle_read_finish,
+      &tcp_connection::handle_read,
       shared_from_this(),
       boost::asio::placeholders::error,
       boost::asio::placeholders::bytes_transferred);
 
-    boost::asio::async_write(socket_, boost::asio::buffer(message_), write_handler);
-    boost::asio::async_read_until(socket_, request_data_, "\r\n\r\n", read_handler);
+
+    request_ = {}; // clear the request before writing to it
+    http::async_read(socket_, overflow_buf_, request_, read_handler);
+
+    // boost::asio::async_read_until(socket_, request_data_, "\r\n\r\n", read_handler);
   }
 
 private:
@@ -89,23 +88,84 @@ private:
   {
   }
 
+  // void
+  // close_socket()
+  // {
+  //     // Send a TCP shutdown
+  //     beast::error_code ec;
+  //     stream_.socket().shutdown(tcp::socket::shutdown_send, ec);
+  //
+  //     // At this point the connection is closed gracefully
+  // }
+
   void handle_write(const boost::system::error_code& /*error*/, size_t /*bytes_transferred*/)
   {
     std::cout << "tcp_connection::handle_write()" << std::endl;
   }
 
-  void handle_read_finish(const boost::system::error_code& error, size_t bytes_transferred)
+  void handle_read(const boost::system::error_code& error, size_t bytes_transferred)
   {
-    if (error != boost::asio::error::misc_errors::eof) {
-      std::cerr << "read finished with error code: " << error << std::endl;
+    if(error == http::error::end_of_stream) {
+      std::cout << "end of stream." << std::endl;
+      return;
     }
 
+    if(error) {
+      std::cout << "error: " << error << std::endl;
+      return;
+    }
+
+    std::cout << "HTTP method: " << request_.method() << std::endl;
+    std::cout << "target: " << request_.target() << std::endl;
 
 
-    std::cout << "tcp_connection::handle_read_finish() transferred "
-      << bytes_transferred << " bytes" << std::endl;
+    std::cout << "HTTP body size:" << request_.body().size() << std::endl;
 
-    std::cout << "size: " << request_data_.size() << std::endl;
+    // https://www.boost.org/doc/libs/develop/libs/beast/doc/html/beast/ref/boost__beast__http__header.html
+    std::cout << "HTTP header: " << request_.base().method_string() << std::endl;
+
+    // parse report request here...
+
+    auto request_body = request_.body();
+    std::stringstream body_stream(std::string(request_body.begin(), request_body.end()));
+
+    GOOGLE_PROTOBUF_VERIFY_VERSION;
+
+    lightstep::collector::ReportRequest report_request;
+
+    if (!report_request.ParseFromIstream(&body_stream)) {
+      std::cerr << "there was an error parsing the report request" << std::endl;
+      return;
+    }
+
+    std::cout << "got " << report_request.spans().size() << " spans." << std::endl;
+
+    write_okay_response();
+
+
+    // std::cout << "read finished with error code: " << error << std::endl;
+    // std::cout << "tcp_connection::handle_read_finish() transferred "
+    //   << bytes_transferred << " bytes" << std::endl;
+    //
+    // if (request_parser_.is_done()) {
+    //   // std::cout << "content-type" << request_parser_.get()["Content-Type"] << std::endl;
+    //   std::cout << "body: " << request_parser_.body() << std::endl;
+    // }
+    // std::cout << "size: " << request_data_.size() << std::endl;
+  }
+
+  void write_okay_response()
+  {
+    message_ = "HTTP/1.1 200 OK\r\n\r\n";
+
+    auto write_handler = boost::bind(
+      &tcp_connection::handle_write,
+      // passes 'this' in a way that the shared pointer class notices
+      shared_from_this(),
+      boost::asio::placeholders::error,
+      boost::asio::placeholders::bytes_transferred);
+
+    boost::asio::async_write(socket_, boost::asio::buffer(message_), write_handler);
   }
 };
 
