@@ -1,7 +1,5 @@
 /*
 taken from: http://think-async.com/Asio/boost_asio_1_13_0/doc/html/boost_asio/tutorial/tutdaytime3/src.html
-
-todo: match both \r\n\r\n\ and \n\n
 */
 
 #include <collector.pb.h>
@@ -15,12 +13,9 @@ todo: match both \r\n\r\n\ and \n\n
 #include <boost/enable_shared_from_this.hpp>
 #include <boost/asio.hpp>
 #include <boost/regex.hpp>
-
 #include <boost/beast.hpp>
-// #include <boost/beast/core.hpp>
 
 #include <sstream>
-
 
 #define PORT 1998
 
@@ -41,7 +36,7 @@ private:
   std::string message_;
 
   beast::flat_buffer overflow_buf_; // resizable buffer of chars
-  http::request<http::vector_body<char>> request_;
+  http::request<http::string_body> request_;
 
 public:
   // make a nice name for a pointer to this class
@@ -63,11 +58,6 @@ public:
   {
     std::cout << "tcp_connection::start()" << std::endl;
 
-    // setup the read buffer, underlying memory allocated on the heap
-    // std::shared_ptr<std::vector<char>> char_buf = new std::vector<char>(READ_BUFFER_LENGTH + 1); // TODO: remove 1
-    // std::shared_ptr<char> char_buf(new char[READ_BUFFER_LENGTH + 1], std::default_delete<char[]>());
-    // auto read_buffer = boost::asio::buffer(char_buf.get(), READ_BUFFER_LENGTH + 1);
-
     // read handler will write data into the read buffer
     auto read_handler = boost::bind(
       &tcp_connection::handle_read,
@@ -78,29 +68,17 @@ public:
 
     request_ = {}; // clear the request before writing to it
     http::async_read(socket_, overflow_buf_, request_, read_handler);
-
-    // boost::asio::async_read_until(socket_, request_data_, "\r\n\r\n", read_handler);
   }
 
 private:
+  // private constructor because we are using enable_shared_from_this
   tcp_connection(boost::asio::io_context &io_context)
     : socket_(io_context)
   {
   }
 
-  // void
-  // close_socket()
-  // {
-  //     // Send a TCP shutdown
-  //     beast::error_code ec;
-  //     stream_.socket().shutdown(tcp::socket::shutdown_send, ec);
-  //
-  //     // At this point the connection is closed gracefully
-  // }
-
   void handle_write(const boost::system::error_code& /*error*/, size_t /*bytes_transferred*/)
   {
-    std::cout << "tcp_connection::handle_write()" << std::endl;
   }
 
   void handle_read(const boost::system::error_code& error, size_t bytes_transferred)
@@ -111,23 +89,18 @@ private:
     }
 
     if(error) {
-      std::cout << "error: " << error << std::endl;
+      std::cerr << "error reading : " << error << std::endl;
       return;
     }
 
-    std::cout << "HTTP method: " << request_.method() << std::endl;
-    std::cout << "target: " << request_.target() << std::endl;
+    if (request_.base().method_string() != "POST") {
+      std::cerr << "sidecar only accepts POST requests from tracers, not '"
+        << request_.base().method_string() << "' requests." << std::endl;
+      return;
+    }
 
-
-    std::cout << "HTTP body size:" << request_.body().size() << std::endl;
-
-    // https://www.boost.org/doc/libs/develop/libs/beast/doc/html/beast/ref/boost__beast__http__header.html
-    std::cout << "HTTP header: " << request_.base().method_string() << std::endl;
-
-    // parse report request here...
-
-    auto request_body = request_.body();
-    std::stringstream body_stream(std::string(request_body.begin(), request_body.end()));
+    // convert the request body from string --> stringstream
+    std::stringstream body_stream(request_.body());
 
     GOOGLE_PROTOBUF_VERIFY_VERSION;
 
@@ -138,20 +111,9 @@ private:
       return;
     }
 
-    std::cout << "got " << report_request.spans().size() << " spans." << std::endl;
+    std::cout << "received spans: " << report_request.spans().size() << std::endl;
 
     write_okay_response();
-
-
-    // std::cout << "read finished with error code: " << error << std::endl;
-    // std::cout << "tcp_connection::handle_read_finish() transferred "
-    //   << bytes_transferred << " bytes" << std::endl;
-    //
-    // if (request_parser_.is_done()) {
-    //   // std::cout << "content-type" << request_parser_.get()["Content-Type"] << std::endl;
-    //   std::cout << "body: " << request_parser_.body() << std::endl;
-    // }
-    // std::cout << "size: " << request_data_.size() << std::endl;
   }
 
   void write_okay_response()
@@ -227,18 +189,3 @@ int main() {
 
   return 0;
 }
-
-/*
-io cocntext:  boost-:asio::io_context io_context;
-io object:    boost::asio::ip::tcp::socket socket(io_context);
-
-errors:
- - boost::system::error_code is passed from io context to io object
-   - may be tested as bool (false means no error)
- - void your_completion_handler(const boost::system::error_code& ec);
-
-
-io_context::run() -- starts the loop that checks OS queues for finished work
-
-
-*/
